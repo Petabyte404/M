@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IP an Discord Webhook senden</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 16px; }
+    input, button { width: 100%; padding: 10px; margin: 8px 0; font-size: 1rem; }
+    button { cursor: pointer; }
+    #status { margin-top: 12px; white-space: pre-wrap; }
+    .hint { color: #555; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>IP an Discord Webhook senden</h1>
+  <p class="hint">
+    Hinweis: Eine IP-Adresse ist ein personenbezogenes Datum (DSGVO).
+    Nutze dieses Tool nur mit Einwilligung der betroffenen Person bzw. für deine eigene IP zu Testzwecken.
+    Kein heimliches Logging ohne Zustimmung.
+  </p>
+
+  <label for="webhook">Discord Webhook URL:</label>
+  <input id="webhook" type="url" placeholder="https://discord.com/api/webhooks/..." />
+
+  <label for="message">Optionale Nachricht:</label>
+  <input id="message" type="text" placeholder="z.B. Test von meinem PC" />
+
+  <button id="sendBtn">Eigene öffentliche IP abrufen und senden</button>
+
+  <div id="status"></div>
+  <p id="ipPreview" class="hint"></p>
+
+  <script>
+    const sendBtn = document.getElementById('sendBtn');
+    const statusEl = document.getElementById('status');
+    const ipPreviewEl = document.getElementById('ipPreview');
+
+    sendBtn.addEventListener('click', async () => {
+      const webhookUrl = document.getElementById('webhook').value.trim();
+      const customMessage = document.getElementById('message').value.trim();
+      statusEl.textContent = '';
+      ipPreviewEl.textContent = '';
+
+      if (!webhookUrl.startsWith('https://discord.com/api/webhooks/') &&
+          !webhookUrl.startsWith('https://discordapp.com/api/webhooks/')) {
+        statusEl.textContent = 'Bitte eine gültige Discord Webhook URL einfügen.';
+        return;
+      }
+
+      if (!confirm('Deine öffentliche IP wird jetzt abgerufen und an den angegebenen Discord Webhook gesendet. Fortfahren?')) {
+        return;
+      }
+
+      try {
+        statusEl.textContent = 'Rufe IP ab...';
+        // Öffentliche IP über ipify ermitteln
+        const ipRes = await fetch('https://api.ipify.org?format=json');
+        if (!ipRes.ok) throw new Error('IP-Abruf fehlgeschlagen: ' + ipRes.status);
+        const ipData = await ipRes.json();
+        const ip = ipData.ip;
+
+        ipPreviewEl.textContent = 'Gefundene IP: ' + ip;
+
+        statusEl.textContent = 'Sende an Discord...';
+        const payload = {
+          content: (customMessage ? customMessage + '\n' : '') + 'Öffentliche IP: ' + ip + '\nZeitpunkt: ' + new Date().toISOString(),
+          username: 'IP-Sender'
+        };
+
+        const dcRes = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (dcRes.ok || dcRes.status === 204) {
+          statusEl.textContent = 'Erfolgreich gesendet! IP: ' + ip;
+        } else {
+          const text = await dcRes.text();
+          throw new Error('Discord Fehler ' + dcRes.status + ': ' + text);
+        }
+      } catch (err) {
+        statusEl.textContent = 'Fehler: ' + err.message;
+        console.error(err);
+      }
+    });
+  </script>
+</body>
+</html>
